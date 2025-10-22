@@ -1,54 +1,35 @@
-name: CI + Security
+name: Veracode SCA
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
-  actions: read
-
 jobs:
-  build:
-    name: Build (Node + npm install) & gerar artifact
-    runs-on: ubuntu-latest
+  sca:
+    name: Run Veracode SCA (Java 17)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    env:
+      SRCCLR_API_TOKEN: ${{ secrets.SRCCLR_API_TOKEN }}
+      CACHE_DIR: ${{ runner.temp }}/sca-cache
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Set up Java 17 (Temurin)
+        uses: actions/setup-java@v4
         with:
-          node-version: 'lts/*'
-          cache: 'npm'
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: Install deps
-        run: npm install
+      - name: Verify Java version
+        run: java -version
 
-      - name: Test
-        run: npm test --if-present
-
-      - name: Preparar pasta build/
+      - name: Run Veracode SCA
+        shell: bash
         run: |
-          rm -rf build
-          mkdir -p build
-          cp -R ./* build/ || true
-          echo "Conteúdo final da pasta build/"
-          ls -lah build || true
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: artifact-build
-          path: build
-          if-no-files-found: error
-
-  security-scans:
-    name: Security Scans (Veracode)
-    needs: build
-    uses: JuanCunhaa/Veracode-Pipelines/.github/workflows/ci_security_scans.yaml@main
-    secrets: inherit
-    with:
-      build_artifact_name: artifact-build
-      build_artifact_path: build
+          set -euo pipefail
+          mkdir -p "$CACHE_DIR"
+          curl -sSL https://sca-downloads.veracode.com/ci.sh | bash -s -- scan --update-advisor --allow-dirty --recursive
