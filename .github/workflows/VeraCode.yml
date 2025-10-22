@@ -9,10 +9,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-
     env:
       SRCCLR_API_TOKEN: ${{ secrets.SCA }}
-      CACHE_DIR: ${{ runner.temp }}/sca-cache
 
     steps:
       - name: Checkout
@@ -21,7 +19,7 @@ jobs:
       - name: Set up Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
       - name: Verify Java version
@@ -31,5 +29,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$CACHE_DIR"
+          mkdir -p "$RUNNER_TEMP/sca-cache"
+          export CACHE_DIR="$RUNNER_TEMP/sca-cache"
           curl -sSL https://sca-downloads.veracode.com/ci.sh | bash -s -- scan --update-advisor --allow-dirty --recursive
