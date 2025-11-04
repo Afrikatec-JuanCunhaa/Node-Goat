@@ -20,39 +20,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1️⃣ Instalar Veracode CLI (coloca no PATH)
+      # 1) Instalar Veracode CLI
       - name: Install Veracode CLI
         shell: bash
         run: |
           set -euo pipefail
-          echo ">> Instalando Veracode CLI"
           curl -fsSL https://tools.veracode.com/veracode-cli/install | sh
           sudo mv ./veracode /usr/local/bin/veracode
           veracode version
 
-      # 2️⃣ Autopackager (não interativo)
+      # 2) Autopackager (não interativo)
       - name: Auto-package source into artifact (non-interactive)
         id: autopack
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p veracode_artifacts
-          echo ">> Rodando autopackager"
-          # responde aos dois prompts de confiança
           printf 'y\ny\n' | veracode package --source . --output veracode_artifacts
-          echo ">> Artefatos gerados:"
-          ls -la veracode_artifacts
           ARTIFACT_PATH="$(ls -1 veracode_artifacts/*.zip | head -n 1)"
           echo "artifact_path=${ARTIFACT_PATH}" >> "$GITHUB_OUTPUT"
 
-      # (opcional) guarda o ZIP como artefato no workflow
+      # (opcional) guardar o ZIP
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
         with:
           name: veracode-artifact
           path: ${{ steps.autopack.outputs.artifact_path }}
 
-      # 3️⃣ Pipeline Scan (política Rigorosa-Teste) + saída JSON
+      # 3) Pipeline Scan (política Rigorosa-Teste) + JSON
       - name: Veracode Pipeline Scan (Rigorosa-Teste)
         id: pipeline_scan
         uses: veracode/Veracode-pipeline-scan-action@v1.0.12
@@ -65,7 +60,7 @@ jobs:
           json_output: true
           json_output_file: "results.json"
 
-      # 4️⃣ Veracode Fix — corrige tudo o que for suportado
+      # 4) Veracode Fix — BATCH + ALL FILES (requerido p/ createPR)
       - name: Veracode Fix (auto PR)
         if: always()
         uses: veracode/veracode-fix@v1.0.4
@@ -73,9 +68,10 @@ jobs:
           vid: ${{ secrets.VERACODE_API_ID }}
           vkey: ${{ secrets.VERACODE_API_KEY }}
           inputFile: results.json
-          fixType: all                # ⚙️ aplica correções em todos os arquivos suportados
-          language: javascript        # ajuda o modelo a focar no stack JS
-          createPR: true
+          language: javascript
+          fixType: batch          # ✅ valores válidos: single | batch
+          files: all              # ✅ valores válidos: changed | all
+          createPR: true          # ✅ só funciona com fixType=batch
           prComment: true
           codeSuggestion: true
           emailForCommits: "github-actions[bot]@users.noreply.github.com"
