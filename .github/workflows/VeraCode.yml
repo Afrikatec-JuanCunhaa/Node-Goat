@@ -7,54 +7,55 @@ jobs:
   sast_autofix:
     runs-on: ubuntu-24.04
     permissions:
-      contents: write          # necessário para criar branch/PR
+      contents: write
       pull-requests: write
 
     env:
-      VERACODE_API_ID: ${{ secrets.VERACODE_API_ID }}      # crie os secrets VID/VKEY
+      .VERACODE_API_ID: ${{ secrets.VERACODE_API_ID }}
       VERACODE_API_KEY: ${{ secrets.VERACODE_API_KEY }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1) Instala o Veracode CLI (Linux)
+      # 1) Instalar Veracode CLI oficialmente
       - name: Install Veracode CLI
         shell: bash
         run: |
           set -euo pipefail
+          echo ">> Instalando Veracode CLI"
           curl -fsSL https://tools.veracode.com/veracode-cli/install | sh
-          ./veracode version
+          # mover binário pra um local conhecido no PATH
+          sudo mv ./veracode /usr/local/bin/veracode
+          veracode version
 
-      # 2) Autopackager: gera artefato ZIP a partir do repo
-      #    O CLI detecta a linguagem e empacota seguindo as regras do autopackager.
+      # 2) Autopackager (gera artefato ZIP automaticamente)
       - name: Auto-package source into artifact
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p veracode_artifacts
-          # Empacota o código da raiz do repo. Ajuste --source se seu app estiver em subpasta.
+          echo ">> Rodando autopackager"
           veracode package --source . --output veracode_artifacts
-          echo "Artifacts:"
+          echo ">> Artefatos gerados:"
           ls -la veracode_artifacts
 
-      # 3) Pipeline Scan com política Rigorosa-Teste e saída JSON (results.json)
-      - name: Veracode Pipeline Scan (policy Rigorosa-Teste)
+      # 3) Pipeline Scan (política Rigorosa-Teste + JSON)
+      - name: Veracode Pipeline Scan (Rigorosa-Teste)
         id: pipeline_scan
         uses: veracode/Veracode-pipeline-scan-action@v1.0.12
         with:
           vid: ${{ secrets.VERACODE_API_ID }}
           vkey: ${{ secrets.VERACODE_API_KEY }}
-          # Use o primeiro ZIP gerado pelo autopackager (ajuste se tiver múltiplos)
           file: "veracode_artifacts/$(ls veracode_artifacts | head -n 1)"
           veracode_policy_name: "Rigorosa-Teste"
           fail_build: true
           json_output: true
           json_output_file: "results.json"
 
-      # 4) Veracode Fix: lê results.json e cria PR com correções sugeridas
+      # 4) Veracode Fix - cria PR com correções automáticas
       - name: Veracode Fix (auto PR)
-        if: always()  # roda mesmo se o scan falhar pela política
+        if: always()
         uses: veracode/veracode-fix@v1.0.4
         with:
           vid: ${{ secrets.VERACODE_API_ID }}
