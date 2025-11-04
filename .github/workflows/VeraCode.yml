@@ -11,55 +11,64 @@ jobs:
       pull-requests: write
 
     env:
-      .VERACODE_API_ID: ${{ secrets.VERACODE_API_ID }}
-      VERACODE_API_KEY: ${{ secrets.VERACODE_API_KEY }}
+      VERACODE_API_ID: ${{ secrets.VERACODE_API_ID }}
+      VERACODE_API_KEY: ${{ secrets.VKEY }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1) Instalar Veracode CLI oficialmente
+      # 1) Instalar Veracode CLI (script oficial)
       - name: Install Veracode CLI
         shell: bash
         run: |
           set -euo pipefail
-          echo ">> Instalando Veracode CLI"
           curl -fsSL https://tools.veracode.com/veracode-cli/install | sh
-          # mover binário pra um local conhecido no PATH
           sudo mv ./veracode /usr/local/bin/veracode
           veracode version
 
-      # 2) Autopackager (gera artefato ZIP automaticamente)
-      - name: Auto-package source into artifact
+      # 2) Autopackager (não-interativo): gera ZIP em veracode_artifacts/
+      - name: Auto-package source into artifact (non-interactive)
+        id: autopack
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p veracode_artifacts
-          echo ">> Rodando autopackager"
-          veracode package --source . --output veracode_artifacts
+          # responde "y" automaticamente ao prompt de confiança
+          yes y | veracode package --source . --output veracode_artifacts
           echo ">> Artefatos gerados:"
           ls -la veracode_artifacts
+          # pega o primeiro .zip gerado
+          ARTIFACT_PATH="$(ls -1 veracode_artifacts/*.zip | head -n 1)"
+          echo "artifact_path=${ARTIFACT_PATH}" >> "$GITHUB_OUTPUT"
 
-      # 3) Pipeline Scan (política Rigorosa-Teste + JSON)
+      # (opcional) publique o ZIP como artefato do workflow
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veracode-artifact
+          path: ${{ steps.autopack.outputs.artifact_path }}
+
+      # 3) Pipeline Scan com policy Rigorosa-Teste + JSON
       - name: Veracode Pipeline Scan (Rigorosa-Teste)
         id: pipeline_scan
         uses: veracode/Veracode-pipeline-scan-action@v1.0.12
         with:
           vid: ${{ secrets.VERACODE_API_ID }}
-          vkey: ${{ secrets.VERACODE_API_KEY }}
-          file: "veracode_artifacts/$(ls veracode_artifacts | head -n 1)"
+          vkey: ${{ secrets.VKEY }}
+          file: ${{ steps.autopack.outputs.artifact_path }}
           veracode_policy_name: "Rigorosa-Teste"
           fail_build: true
           json_output: true
           json_output_file: "results.json"
 
-      # 4) Veracode Fix - cria PR com correções automáticas
+      # 4) Veracode Fix — lê results.json e cria PR automático
       - name: Veracode Fix (auto PR)
-        if: always()
+        if: always()    # roda mesmo se o scan falhar pela policy
         uses: veracode/veracode-fix@v1.0.4
         with:
           vid: ${{ secrets.VERACODE_API_ID }}
-          vkey: ${{ secrets.VERACODE_API_KEY }}
+          vkey: ${{ secrets.VKEY }}
           inputFile: results.json
           createPR: true
           prComment: true
