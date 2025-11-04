@@ -1,4 +1,4 @@
-name: Veracode SCA
+name: Veracode SCA + Fix (Rigorosa-Teste)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,8 @@ jobs:
     name: Run Veracode SCA (Java 17)
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      contents: write          # precisa de write para o Fix criar PR
+      pull-requests: write
     env:
       SRCCLR_API_TOKEN: ${{ secrets.SCA }}
 
@@ -25,10 +26,31 @@ jobs:
       - name: Verify Java version
         run: java -version
 
-      - name: Run Veracode SCA
+      # =====================================================
+      # Etapa: SCA com política "Rigorosa-Teste"
+      # =====================================================
+      - name: Run Veracode SCA (Policy: Rigorosa-Teste)
+        id: sca
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/sca-cache"
           export CACHE_DIR="$RUNNER_TEMP/sca-cache"
-          curl -sSL https://sca-downloads.veracode.com/ci.sh | bash -s -- scan --update-advisor --allow-dirty --recursive
+          echo ">> Rodando Veracode SCA com política Rigorosa-Teste"
+          curl -sSL https://sca-downloads.veracode.com/ci.sh | bash -s -- scan \
+            --update-advisor \
+            --allow-dirty \
+            --recursive \
+            --policy "Rigorosa-Teste"
+
+      # =====================================================
+      # Etapa: Veracode Fix — cria branch e PR automático
+      # =====================================================
+      - name: Run Veracode Fix
+        if: always()   # executa mesmo se o scan falhar
+        uses: veracode/veracode-fix@v1
+        with:
+          base-branch: noel                    # branch destino dos PRs de correção
+          pr-title-prefix: "Veracode Fix:"
+          commit-message-prefix: "Veracode Fix:"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
