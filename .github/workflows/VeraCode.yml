@@ -9,8 +9,8 @@ jobs:
   sast_autofix:
     runs-on: ubuntu-24.04
     permissions:
-      contents: write          # criar branch/commits
-      pull-requests: write     # abrir/comentar PR
+      contents: write
+      pull-requests: write
 
     env:
       VERACODE_API_ID: ${{ secrets.VERACODE_API_ID }}
@@ -20,28 +20,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1) Instala o Veracode CLI (coloca no PATH)
+      # 1️⃣ Instalar Veracode CLI (coloca no PATH)
       - name: Install Veracode CLI
         shell: bash
         run: |
           set -euo pipefail
+          echo ">> Instalando Veracode CLI"
           curl -fsSL https://tools.veracode.com/veracode-cli/install | sh
           sudo mv ./veracode /usr/local/bin/veracode
           veracode version
 
-      # 2) Autopackager (não interativo)
+      # 2️⃣ Autopackager (não interativo)
       - name: Auto-package source into artifact (non-interactive)
         id: autopack
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p veracode_artifacts
-          # Responde aos 2 prompts (trust e save trust)
+          echo ">> Rodando autopackager"
+          # responde aos dois prompts de confiança
           printf 'y\ny\n' | veracode package --source . --output veracode_artifacts
+          echo ">> Artefatos gerados:"
+          ls -la veracode_artifacts
           ARTIFACT_PATH="$(ls -1 veracode_artifacts/*.zip | head -n 1)"
           echo "artifact_path=${ARTIFACT_PATH}" >> "$GITHUB_OUTPUT"
 
-      # 3) Pipeline Scan (policy Rigorosa-Teste) com JSON
+      # (opcional) guarda o ZIP como artefato no workflow
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veracode-artifact
+          path: ${{ steps.autopack.outputs.artifact_path }}
+
+      # 3️⃣ Pipeline Scan (política Rigorosa-Teste) + saída JSON
       - name: Veracode Pipeline Scan (Rigorosa-Teste)
         id: pipeline_scan
         uses: veracode/Veracode-pipeline-scan-action@v1.0.12
@@ -54,7 +65,7 @@ jobs:
           json_output: true
           json_output_file: "results.json"
 
-      # 4) Veracode Fix — força atuar em TODOS os arquivos suportados
+      # 4️⃣ Veracode Fix — corrige tudo o que for suportado
       - name: Veracode Fix (auto PR)
         if: always()
         uses: veracode/veracode-fix@v1.0.4
@@ -62,10 +73,10 @@ jobs:
           vid: ${{ secrets.VERACODE_API_ID }}
           vkey: ${{ secrets.VERACODE_API_KEY }}
           inputFile: results.json
+          fixType: all                # ⚙️ aplica correções em todos os arquivos suportados
+          language: javascript        # ajuda o modelo a focar no stack JS
           createPR: true
           prComment: true
           codeSuggestion: true
-          fixType: all             # <— chave: não depende do diff do PR
-          language: javascript     # ajuda o motor a focar no stack JS
-          token: ${{ secrets.GITHUB_TOKEN }}   # credencial para abrir PR
           emailForCommits: "github-actions[bot]@users.noreply.github.com"
+          token: ${{ secrets.GITHUB_TOKEN }}
