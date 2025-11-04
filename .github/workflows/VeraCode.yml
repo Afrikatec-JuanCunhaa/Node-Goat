@@ -23,10 +23,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsSL https://downloads.veracode.com/securityscan/cli/veracode-cli_Linux_x86_64.tar.gz -o veracode-cli.tar.gz
-          mkdir -p $HOME/.veracode && tar -xzf veracode-cli.tar.gz -C $HOME/.veracode
-          echo "$HOME/.veracode" >> $GITHUB_PATH
-          veracode version || true
+          curl -fsSL https://tools.veracode.com/veracode-cli/install | sh
+          ./veracode version
 
       # 2) Autopackager: gera artefato ZIP a partir do repo
       #    O CLI detecta a linguagem e empacota seguindo as regras do autopackager.
