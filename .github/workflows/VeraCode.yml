@@ -32,7 +32,7 @@ jobs:
       # ================================
       # SCA com política Rigorosa-Teste
       # ================================
-      - name: Run Veracode SCA (Policy: Rigorosa-Teste)
+      - name: Run Veracode SCA Policy Rigorosa-Teste
         id: sca
         shell: bash
         run: |
