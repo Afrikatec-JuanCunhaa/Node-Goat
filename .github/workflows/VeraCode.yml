@@ -40,7 +40,7 @@ jobs:
 
       - name: Run Veracode Fix (auto PR)
         if: always()
-        uses: veracode/veracode-fix@v1.04
+        uses: veracode/veracode-fix@v1.0.4
         with:
           base-branch: noel
           pr-title-prefix: "Veracode Fix:"
