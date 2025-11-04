@@ -27,29 +27,27 @@ jobs:
           sudo mv ./veracode /usr/local/bin/veracode
           veracode version
 
-      # 2) Autopackager (não-interativo): gera ZIP em veracode_artifacts/
+      # 2) Autopackager NON-INTERACTIVE (sem Broken pipe)
       - name: Auto-package source into artifact (non-interactive)
         id: autopack
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p veracode_artifacts
-          # responde "y" automaticamente ao prompt de confiança
-          yes y | veracode package --source . --output veracode_artifacts
-          echo ">> Artefatos gerados:"
+          printf 'y\ny\n' | veracode package --source . --output veracode_artifacts
+          echo ">> Artefatos:"
           ls -la veracode_artifacts
-          # pega o primeiro .zip gerado
           ARTIFACT_PATH="$(ls -1 veracode_artifacts/*.zip | head -n 1)"
           echo "artifact_path=${ARTIFACT_PATH}" >> "$GITHUB_OUTPUT"
 
-      # (opcional) publique o ZIP como artefato do workflow
+      # (opcional) guardar o ZIP nos artifacts do workflow
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
         with:
           name: veracode-artifact
           path: ${{ steps.autopack.outputs.artifact_path }}
 
-      # 3) Pipeline Scan com policy Rigorosa-Teste + JSON
+      # 3) Pipeline Scan (política Rigorosa-Teste) + JSON
       - name: Veracode Pipeline Scan (Rigorosa-Teste)
         id: pipeline_scan
         uses: veracode/Veracode-pipeline-scan-action@v1.0.12
@@ -62,9 +60,9 @@ jobs:
           json_output: true
           json_output_file: "results.json"
 
-      # 4) Veracode Fix — lê results.json e cria PR automático
+      # 4) Veracode Fix — lê results.json e abre PR automático
       - name: Veracode Fix (auto PR)
-        if: always()    # roda mesmo se o scan falhar pela policy
+        if: always()
         uses: veracode/veracode-fix@v1.0.4
         with:
           vid: ${{ secrets.VERACODE_API_ID }}
