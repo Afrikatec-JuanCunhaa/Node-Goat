@@ -12,7 +12,7 @@ jobs:
 
     env:
       VERACODE_API_ID: ${{ secrets.VERACODE_API_ID }}
-      VERACODE_API_KEY: ${{ secrets.VKEY }}
+      VERACODE_API_KEY: ${{ secrets.VERACODE_API_KEY }}
 
     steps:
       - name: Checkout
@@ -55,7 +55,7 @@ jobs:
         uses: veracode/Veracode-pipeline-scan-action@v1.0.12
         with:
           vid: ${{ secrets.VERACODE_API_ID }}
-          vkey: ${{ secrets.VKEY }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
           file: ${{ steps.autopack.outputs.artifact_path }}
           veracode_policy_name: "Rigorosa-Teste"
           fail_build: true
@@ -68,7 +68,7 @@ jobs:
         uses: veracode/veracode-fix@v1.0.4
         with:
           vid: ${{ secrets.VERACODE_API_ID }}
-          vkey: ${{ secrets.VKEY }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
           inputFile: results.json
           createPR: true
           prComment: true
