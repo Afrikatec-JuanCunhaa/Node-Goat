@@ -1,48 +1,68 @@
-name: Veracode SCA + Fix (Rigorosa-Teste)
+name: Veracode Autopackager + Pipeline Scan + Fix (Rigorosa-Teste)
 
 on:
   workflow_dispatch:
 
 jobs:
-  sca:
-    name: Run Veracode SCA (Java 17) + Fix
+  sast_autofix:
     runs-on: ubuntu-24.04
-
     permissions:
-      contents: write
+      contents: write          # necessário para criar branch/PR
       pull-requests: write
 
     env:
-      SRCCLR_API_TOKEN: ${{ secrets.SCA }}
+      VERACODE_API_ID: ${{ secrets.VERACODE_API_ID }}      # crie os secrets VID/VKEY
+      VERACODE_API_KEY: ${{ secrets.VERACODE_API_KEY }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17 (Temurin)
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Verify Java version
-        run: java -version
-
-      - name: Run Veracode SCA (policy Rigorosa-Teste)
-        id: sca
+      # 1) Instala o Veracode CLI (Linux)
+      - name: Install Veracode CLI
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/sca-cache"
-          export CACHE_DIR="$RUNNER_TEMP/sca-cache"
-          echo ">> Rodando Veracode SCA com política Rigorosa-Teste"
-          curl -sSL https://sca-downloads.veracode.com/ci.sh | bash -s -- scan --update-advisor --allow-dirty --recursive
+          curl -fsSL https://downloads.veracode.com/securityscan/cli/veracode-cli_Linux_x86_64.tar.gz -o veracode-cli.tar.gz
+          mkdir -p $HOME/.veracode && tar -xzf veracode-cli.tar.gz -C $HOME/.veracode
+          echo "$HOME/.veracode" >> $GITHUB_PATH
+          veracode version || true
 
-      - name: Run Veracode Fix (auto PR)
-        if: always()
+      # 2) Autopackager: gera artefato ZIP a partir do repo
+      #    O CLI detecta a linguagem e empacota seguindo as regras do autopackager.
+      - name: Auto-package source into artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p veracode_artifacts
+          # Empacota o código da raiz do repo. Ajuste --source se seu app estiver em subpasta.
+          veracode package --source . --output veracode_artifacts
+          echo "Artifacts:"
+          ls -la veracode_artifacts
+
+      # 3) Pipeline Scan com política Rigorosa-Teste e saída JSON (results.json)
+      - name: Veracode Pipeline Scan (policy Rigorosa-Teste)
+        id: pipeline_scan
+        uses: veracode/Veracode-pipeline-scan-action@v1.0.12
+        with:
+          vid: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
+          # Use o primeiro ZIP gerado pelo autopackager (ajuste se tiver múltiplos)
+          file: "veracode_artifacts/$(ls veracode_artifacts | head -n 1)"
+          veracode_policy_name: "Rigorosa-Teste"
+          fail_build: true
+          json_output: true
+          json_output_file: "results.json"
+
+      # 4) Veracode Fix: lê results.json e cria PR com correções sugeridas
+      - name: Veracode Fix (auto PR)
+        if: always()  # roda mesmo se o scan falhar pela política
         uses: veracode/veracode-fix@v1.0.4
         with:
-          base-branch: noel
-          pr-title-prefix: "Veracode Fix:"
-          commit-message-prefix: "Veracode Fix:"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          vid: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
+          inputFile: results.json
+          createPR: true
+          prComment: true
+          codeSuggestion: true
+          emailForCommits: "github-actions[bot]@users.noreply.github.com"
