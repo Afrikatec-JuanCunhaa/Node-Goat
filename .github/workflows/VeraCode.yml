@@ -7,9 +7,12 @@ jobs:
   sca:
     name: Run Veracode SCA (Java 17)
     runs-on: ubuntu-24.04
+
+    # O Fix precisa de write para criar branch/PR
     permissions:
-      contents: write          # precisa de write para o Fix criar PR
+      contents: write
       pull-requests: write
+
     env:
       SRCCLR_API_TOKEN: ${{ secrets.SCA }}
 
@@ -21,14 +24,14 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Verify Java version
         run: java -version
 
-      # =====================================================
-      # Etapa: SCA com política "Rigorosa-Teste"
-      # =====================================================
+      # ================================
+      # SCA com política Rigorosa-Teste
+      # ================================
       - name: Run Veracode SCA (Policy: Rigorosa-Teste)
         id: sca
         shell: bash
@@ -43,14 +46,16 @@ jobs:
             --recursive \
             --policy "Rigorosa-Teste"
 
-      # =====================================================
-      # Etapa: Veracode Fix — cria branch e PR automático
-      # =====================================================
+      # ================================
+      # Veracode Fix - abre PR automático
+      # ================================
       - name: Run Veracode Fix
-        if: always()   # executa mesmo se o scan falhar
+        # roda mesmo se o passo anterior falhar,
+        # pois ainda pode haver upgrades acionáveis
+        if: always()
         uses: veracode/veracode-fix@v1
         with:
-          base-branch: noel                    # branch destino dos PRs de correção
+          base-branch: noel
           pr-title-prefix: "Veracode Fix:"
           commit-message-prefix: "Veracode Fix:"
           github-token: ${{ secrets.GITHUB_TOKEN }}
