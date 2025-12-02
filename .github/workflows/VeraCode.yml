@@ -1,4 +1,4 @@
-name: Veracode Pipeline Scan - Use Baseline
+name: Veracode Pipeline Scan - Webhook Test
 
 on:
   workflow_dispatch:
@@ -6,35 +6,34 @@ on:
 jobs:
   pipeline_scan:
     runs-on: ubuntu-latest
-    name: Veracode Pipeline Scan (With Baseline)
+    name: Veracode Pipeline Scan (Send results.json to webhook.site)
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Aqui assumimos que security/baseline.json já está versionado no repo
-      - name: Check baseline file
-        run: |
-          echo "Listando arquivo de baseline:"
-          test -f results.json && echo "results.json encontrado" || (echo "results.json NÃO encontrado" && exit 1)
-
+      # Empacota o projeto em um zip pequeno (ignora coisas pesadas/desnecessárias)
       - name: Create package for scan (zip)
         run: |
-          zip -r nodegoat.zip . \
+          zip -r app.zip . \
             -x "node_modules/*" ".git/*" ".github/*"
 
-      - name: Run Veracode Pipeline Scan with baseline
-        id: pipeline-scan
+      - name: Run Veracode Pipeline Scan
         uses: veracode/Veracode-pipeline-scan-action@v1.0.20
         with:
           vid: ${{ secrets.VERACODE_API_ID }}
           vkey: ${{ secrets.VERACODE_API_KEY }}
-          file: "nodegoat.zip"
-          baseline_file: "results.json"
-          fail_build: true    # agora sim pode quebrar a esteira se tiver finding novo
+          file: "app.zip"
+          fail_build: false  # como é teste, melhor não quebrar a pipeline
 
-      - name: Upload results.json as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: veracode-pipeline-scan-results
-          path: results.json
+      - name: Ensure results.json exists
+        run: |
+          echo "Listando arquivos gerados:"
+          ls -lh
+          test -f results.json || (echo "results.json NÃO encontrado" && exit 1)
+
+      - name: Send results.json to webhook.site
+        run: |
+          curl --fail -X POST "https://webhook.site/ce8517ac-56d4-49fe-ab63-9b9e177438a6" \
+            -H "Content-Type: application/json" \
+            --data-binary @results.json
