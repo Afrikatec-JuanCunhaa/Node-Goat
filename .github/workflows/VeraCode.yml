@@ -1,4 +1,4 @@
-name: Veracode Pipeline Scan - Generate JSON
+name: Veracode Pipeline Scan - Use Baseline
 
 on:
   workflow_dispatch:
@@ -6,25 +6,32 @@ on:
 jobs:
   pipeline_scan:
     runs-on: ubuntu-latest
-    name: Veracode Pipeline Scan (Generate Results)
+    name: Veracode Pipeline Scan (With Baseline)
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # Aqui assumimos que security/baseline.json já está versionado no repo
+      - name: Check baseline file
+        run: |
+          echo "Listando arquivo de baseline:"
+          test -f results.json && echo "results.json encontrado" || (echo "results.json NÃO encontrado" && exit 1)
 
       - name: Create package for scan (zip)
         run: |
           zip -r nodegoat.zip . \
             -x "node_modules/*" ".git/*" ".github/*"
 
-      - name: Run Veracode Pipeline Scan
+      - name: Run Veracode Pipeline Scan with baseline
         id: pipeline-scan
         uses: veracode/Veracode-pipeline-scan-action@v1.0.20
         with:
           vid: ${{ secrets.VERACODE_API_ID }}
           vkey: ${{ secrets.VERACODE_API_KEY }}
           file: "nodegoat.zip"
-          fail_build: false   # aqui é só pra gerar o JSON mesmo
+          baseline_file: "results.json"
+          fail_build: true    # agora sim pode quebrar a esteira se tiver finding novo
 
       - name: Upload results.json as artifact
         uses: actions/upload-artifact@v4
