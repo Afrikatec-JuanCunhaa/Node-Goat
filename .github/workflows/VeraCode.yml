@@ -6,13 +6,13 @@ on:
 jobs:
   pipeline_scan:
     runs-on: ubuntu-latest
-    name: Veracode Pipeline Scan (Send results.json to webhook.site)
+    name: Veracode Pipeline Scan (Send results payload to webhook.site)
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Empacota o projeto em um zip pequeno (ignora coisas pesadas/desnecessárias)
+      # Compacta o projeto rapidamente (evitando node_modules e outras pastas pesadas)
       - name: Create package for scan (zip)
         run: |
           zip -r app.zip . \
@@ -24,16 +24,44 @@ jobs:
           vid: ${{ secrets.VERACODE_API_ID }}
           vkey: ${{ secrets.VERACODE_API_KEY }}
           file: "app.zip"
-          fail_build: false  # como é teste, melhor não quebrar a pipeline
+          fail_build: false
 
       - name: Ensure results.json exists
         run: |
-          echo "Listando arquivos gerados:"
+          echo "Arquivos gerados:"
           ls -lh
           test -f results.json || (echo "results.json NÃO encontrado" && exit 1)
 
-      - name: Send results.json to webhook.site
+      - name: Install jq
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
+      - name: Build payload JSON (repo + branch + commit + results.json)
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          echo "Montando payload..."
+
+          jq -n \
+            --arg repo "$REPO_URL" \
+            --arg branch "$BRANCH" \
+            --arg commit "$COMMIT" \
+            --slurpfile results results.json \
+            '{
+              repository: $repo,
+              branch: $branch,
+              commit: $commit,
+              results: $results[0]
+            }' > payload.json
+
+          echo "Payload final:"
+          cat payload.json
+
+      - name: Send payload to webhook.site
         run: |
           curl --fail -X POST "https://webhook.site/ce8517ac-56d4-49fe-ab63-9b9e177438a6" \
             -H "Content-Type: application/json" \
-            --data-binary @results.json
+            --data-binary @payload.json
