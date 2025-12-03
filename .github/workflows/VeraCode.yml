@@ -62,6 +62,6 @@ jobs:
 
       - name: Send payload to webhook.site
         run: |
-          curl --fail -X POST "https://webhook.site/ce8517ac-56d4-49fe-ab63-9b9e177438a6" \
+          curl --fail -X POST "https://webhook.site/d0ef01ab-955d-4fca-8e64-cb1ae5fca903" \
             -H "Content-Type: application/json" \
             --data-binary @payload.json
