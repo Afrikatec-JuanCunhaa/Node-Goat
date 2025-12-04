@@ -32,36 +32,21 @@ jobs:
           ls -lh
           test -f results.json || (echo "results.json NÃO encontrado" && exit 1)
 
-      - name: Install jq
+      - name: Send results.json to Bantuu webhook
+        env:
+          REPOSITORY_FULL_NAME: ${{ github.repository }}
+          STOCK_ISSUES_API_KEY: ${{ secrets.STOCK_ISSUES_API_KEY }}
         run: |
+          echo "Instalando jq..."
           sudo apt-get update -y
           sudo apt-get install -y jq
 
-      - name: Build payload JSON (repo + branch + commit + results.json)
-        env:
-          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
-          BRANCH: ${{ github.ref_name }}
-          COMMIT: ${{ github.sha }}
-        run: |
-          echo "Montando payload..."
+          echo "Montando payload JSON..."
+          payload=$(jq -c --arg repo "$REPOSITORY_FULL_NAME" \
+            '. as $scan | {repositoryFullName: $repo, scanResult: $scan}' results.json)
 
-          jq -n \
-            --arg repo "$REPO_URL" \
-            --arg branch "$BRANCH" \
-            --arg commit "$COMMIT" \
-            --slurpfile results results.json \
-            '{
-              repository: $repo,
-              branch: $branch,
-              commit: $commit,
-              results: $results[0]
-            }' > payload.json
-
-          echo "Payload final:"
-          cat payload.json
-
-      - name: Send payload to webhook.site
-        run: |
-          curl --fail -X POST "https://webhook.site/d0ef01ab-955d-4fca-8e64-cb1ae5fca903" \
+          echo "Enviando payload para API..."
+          curl -X POST "https://good-drab-five.vercel.app/api/veracode/stock-issues/upload" \
             -H "Content-Type: application/json" \
-            --data-binary @payload.json
+            -H "X-API-Key: $STOCK_ISSUES_API_KEY" \
+            -d "$payload"
