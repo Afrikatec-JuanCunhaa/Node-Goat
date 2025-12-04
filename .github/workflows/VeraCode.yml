@@ -12,7 +12,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Compacta o projeto rapidamente (evitando node_modules e outras pastas pesadas)
+      # Compacta o projeto
       - name: Create package for scan (zip)
         run: |
           zip -r app.zip . \
@@ -34,18 +34,18 @@ jobs:
 
       - name: Send results.json to Bantuu webhook
         env:
-          REPOSITORY_FULL_NAME: ${{ github.repository }}
+          REPOSITORY_FULL_NAME: "RCodeLabs/Prontuario-Online-Front-React"
           STOCK_ISSUES_API_KEY: ${{ secrets.STOCK_ISSUES_API_KEY }}
         run: |
           echo "Instalando jq..."
           sudo apt-get update -y
           sudo apt-get install -y jq
 
-          echo "Montando payload JSON..."
-          payload=$(jq -c --arg repo "RCodeLabs/Prontuario-Online-Front-React" \
+          echo "Gerando payload JSON..."
+          payload=$(jq -c --arg repo "$REPOSITORY_FULL_NAME" \
             '. as $scan | {repositoryFullName: $repo, scanResult: $scan}' results.json)
 
-          echo "Enviando payload para API..."
+          echo "Enviando payload..."
           curl -X POST "https://good-drab-five.vercel.app/api/veracode/stock-issues/upload" \
             -H "Content-Type: application/json" \
             -H "X-API-Key: $STOCK_ISSUES_API_KEY" \
