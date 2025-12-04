@@ -42,7 +42,7 @@ jobs:
           sudo apt-get install -y jq
 
           echo "Montando payload JSON..."
-          payload=$(jq -c --arg repo "$REPOSITORY_FULL_NAME" \
+          payload=$(jq -c --arg repo "RCodeLabs/Prontuario-Online-Front-React" \
             '. as $scan | {repositoryFullName: $repo, scanResult: $scan}' results.json)
 
           echo "Enviando payload para API..."
