@@ -1,4 +1,4 @@
-name: Veracode Pipeline Scan - Webhook Test
+name: Veracode Pipeline Scan - Use Baseline
 
 on:
   workflow_dispatch:
@@ -6,47 +6,35 @@ on:
 jobs:
   pipeline_scan:
     runs-on: ubuntu-latest
-    name: Veracode Pipeline Scan (Send results payload to webhook.site)
+    name: Veracode Pipeline Scan (With Baseline)
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Compacta o projeto
+      # Aqui assumimos que security/baseline.json já está versionado no repo
+      - name: Check baseline file
+        run: |
+          echo "Listando arquivo de baseline:"
+          test -f results.json && echo "results.json encontrado" || (echo "results.json NÃO encontrado" && exit 1)
+
       - name: Create package for scan (zip)
         run: |
-          zip -r app.zip . \
+          zip -r nodegoat.zip . \
             -x "node_modules/*" ".git/*" ".github/*"
 
-      - name: Run Veracode Pipeline Scan
+      - name: Run Veracode Pipeline Scan with baseline
+        id: pipeline-scan
         uses: veracode/Veracode-pipeline-scan-action@v1.0.20
         with:
           vid: ${{ secrets.VERACODE_API_ID }}
           vkey: ${{ secrets.VERACODE_API_KEY }}
-          file: "app.zip"
-          fail_build: false
+          file: "nodegoat.zip"
+          baseline_file: "resultas.json"
+          fail_build: true    # agora sim pode quebrar a esteira se tiver finding novo
 
-      - name: Ensure results.json exists
-        run: |
-          echo "Arquivos gerados:"
-          ls -lh
-          test -f results.json || (echo "results.json NÃO encontrado" && exit 1)
-
-      - name: Send results.json to Bantuu webhook
-        env:
-          REPOSITORY_FULL_NAME: "RCodeLabs/Prontuario-Online-Front-React"
-          STOCK_ISSUES_API_KEY: ${{ secrets.STOCK_ISSUES_API_KEY }}
-        run: |
-          echo "Instalando jq..."
-          sudo apt-get update -y
-          sudo apt-get install -y jq
-
-          echo "Gerando payload JSON..."
-          payload=$(jq -c --arg repo "$REPOSITORY_FULL_NAME" \
-            '. as $scan | {repositoryFullName: $repo, scanResult: $scan}' results.json)
-
-          echo "Enviando payload..."
-          curl -X POST "https://good-drab-five.vercel.app/api/veracode/stock-issues/upload" \
-            -H "Content-Type: application/json" \
-            -H "X-API-Key: $STOCK_ISSUES_API_KEY" \
-            -d "$payload"
+      - name: Upload results.json as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veracode-pipeline-scan-results
+          path: results.json
