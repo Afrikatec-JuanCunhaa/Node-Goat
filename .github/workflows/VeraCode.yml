@@ -30,7 +30,7 @@ jobs:
           vid: ${{ secrets.VERACODE_API_ID }}
           vkey: ${{ secrets.VERACODE_API_KEY }}
           file: "nodegoat.zip"
-          baseline_file: "resultas.json"
+          baseline_file: "results.json"
           fail_build: true    # agora sim pode quebrar a esteira se tiver finding novo
 
       - name: Upload results.json as artifact
