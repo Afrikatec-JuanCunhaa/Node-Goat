@@ -3,7 +3,7 @@ name: Veracode AutoPackager (discover x3 -> package)
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   autopackager:
@@ -17,26 +17,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Veracode CLI
+      - name: Install Veracode CLI (workspace binary)
         shell: bash
         run: |
           set -euo pipefail
+          echo "Installing Veracode CLI..."
           curl -fsS https://tools.veracode.com/veracode-cli/install | sh
 
-          if command -v veracode >/dev/null 2>&1; then
-            echo "VERACODE_CMD=veracode" >> "$GITHUB_ENV"
-          elif [ -f "./veracode" ]; then
+          # O instalador normalmente copia o binário para o workspace como ./veracode
+          if [ -f "./veracode" ]; then
             chmod +x ./veracode
             echo "VERACODE_CMD=./veracode" >> "$GITHUB_ENV"
+            echo "Installed: ./veracode"
+            ./veracode version || true
           else
-            echo "Não achei o binário 'veracode' no PATH nem ./veracode após instalar."
+            echo "Não encontrei ./veracode após a instalação."
+            echo "Listando diretório atual:"
+            ls -lah
             exit 1
           fi
 
-          $VERACODE_CMD version || true
-
-      # DISCOVER 3x (json/yaml/text)
-      - name: AutoPackager - discover (json/yaml/text)
+      # DISCOVER 3x (json / yaml / text) em dry-run
+      - name: AutoPackager - package discover (json/yaml/text)
         shell: bash
         run: |
           set -euo pipefail
@@ -64,17 +66,29 @@ jobs:
             veracode-discover.txt
           if-no-files-found: error
 
-      # PACKAGE
+      # PACKAGE (gera o pacote .zip/.tar/.tgz dentro de veracode-package-out)
       - name: AutoPackager - package
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p veracode-package-out
 
+          # Empacota o projeto inteiro como diretório.
+          # --trust é necessário na primeira execução para confiar no packaging.
           $VERACODE_CMD package --source . --type directory --output veracode-package-out --trust
 
           echo "=== Conteúdo gerado em veracode-package-out ==="
           ls -lah veracode-package-out
+
+          # Opcional: tenta identificar o arquivo gerado
+          PKG_FILE="$(ls -1 veracode-package-out | grep -Ei '\.(zip|tar|tgz)$' | head -n 1 || true)"
+          if [ -z "$PKG_FILE" ]; then
+            echo "Nenhum arquivo .zip/.tar/.tgz encontrado em veracode-package-out"
+            exit 1
+          fi
+
+          echo "PACKAGE_FILE=veracode-package-out/$PKG_FILE" >> "$GITHUB_ENV"
+          echo "Pacote gerado: veracode-package-out/$PKG_FILE"
 
       - name: Upload package output
         uses: actions/upload-artifact@v4
