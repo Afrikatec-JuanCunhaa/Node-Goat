@@ -1,44 +1,84 @@
-name: Veracode Pipeline Scan - Use Bantuu Baseline
+name: Veracode AutoPackager (discover x3 -> package)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main" ]
 
 jobs:
-  pipeline_scan:
+  autopackager:
     runs-on: ubuntu-latest
-    name: Veracode Pipeline Scan (With Bantuu Baseline)
+
+    env:
+      VERACODE_API_KEY_ID: ${{ secrets.VERACODE_API_KEY_ID }}
+      VERACODE_API_KEY_SECRET: ${{ secrets.VERACODE_API_KEY_SECRET }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Create package for scan (zip)
+      - name: Install Veracode CLI
+        shell: bash
         run: |
-          zip -r nodegoat.zip . \
-            -x "node_modules/*" ".git/*" ".github/*"
+          set -euo pipefail
+          curl -fsS https://tools.veracode.com/veracode-cli/install | sh
 
-      - name: Bantuu Veracode Baseline
-        id: bantuu_veracode_baseline
-        uses: Afrikatec-JuanCunhaa/bantuu-baseline@v1
-        with:
-          bantuu_api_key: ${{ secrets.BANTUU_API_KEY }}
-          # Opcional: apontar para ambiente de dev/homolog do Bantuu
-          bantuu_base_url: 'https://good-drab-five.vercel.app'
-          veracode_api_id: ${{ secrets.VERACODE_API_ID }}
-          veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
-          scan_file: nodegoat.zip
-          policy_fail: 'false'                   # pode quebrar a esteira
-          # Opcional: só aplicado quando já existe baseline
-          # fail_on_severity: 'Very High, High'
+          if command -v veracode >/dev/null 2>&1; then
+            echo "VERACODE_CMD=veracode" >> "$GITHUB_ENV"
+          elif [ -f "./veracode" ]; then
+            chmod +x ./veracode
+            echo "VERACODE_CMD=./veracode" >> "$GITHUB_ENV"
+          else
+            echo "Não achei o binário 'veracode' no PATH nem ./veracode após instalar."
+            exit 1
+          fi
 
-      - name: Mostrar status do pipeline
+          $VERACODE_CMD version || true
+
+      # DISCOVER 3x (json/yaml/text)
+      - name: AutoPackager - discover (json/yaml/text)
+        shell: bash
         run: |
-          echo "Has baseline: ${{ steps.bantuu_veracode_baseline.outputs.has_baseline }}"
-          echo "Pipeline status: ${{ steps.bantuu_veracode_baseline.outputs.pipeline_status }}"
-          echo "Repo usado no Bantuu: ${{ steps.bantuu_veracode_baseline.outputs.repository_full_name }}"
+          set -euo pipefail
 
-      - name: Upload results.json as artifact
+          $VERACODE_CMD package discover . --dry-run --format json > veracode-discover.json
+          $VERACODE_CMD package discover . --dry-run --format yaml > veracode-discover.yaml
+          $VERACODE_CMD package discover . --dry-run --format text > veracode-discover.txt
+
+          echo "=== veracode-discover.json (primeiras 120 linhas) ==="
+          sed -n '1,120p' veracode-discover.json || true
+
+          echo "=== veracode-discover.yaml (primeiras 120 linhas) ==="
+          sed -n '1,120p' veracode-discover.yaml || true
+
+          echo "=== veracode-discover.txt (primeiras 200 linhas) ==="
+          sed -n '1,200p' veracode-discover.txt || true
+
+      - name: Upload discover outputs
         uses: actions/upload-artifact@v4
         with:
-          name: veracode-pipeline-scan-results
-          path: results.json
+          name: veracode-discover-outputs
+          path: |
+            veracode-discover.json
+            veracode-discover.yaml
+            veracode-discover.txt
+          if-no-files-found: error
+
+      # PACKAGE
+      - name: AutoPackager - package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p veracode-package-out
+
+          $VERACODE_CMD package --source . --type directory --output veracode-package-out --trust
+
+          echo "=== Conteúdo gerado em veracode-package-out ==="
+          ls -lah veracode-package-out
+
+      - name: Upload package output
+        uses: actions/upload-artifact@v4
+        with:
+          name: veracode-autopackager-package
+          path: veracode-package-out
+          if-no-files-found: error
