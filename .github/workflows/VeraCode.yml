@@ -1,98 +1,25 @@
-name: Veracode AutoPackager (discover x3 -> package)
+name: Security Scan (Auto packager + apenas Pipeline Scan)
 
 on:
-  workflow_dispatch:
   push:
-    branches: ["main"]
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  autopackager:
+  veracode-pipeline-only:
     runs-on: ubuntu-latest
-
-    env:
-      VERACODE_API_KEY_ID: ${{ secrets.VERACODE_API_KEY_ID }}
-      VERACODE_API_KEY_SECRET: ${{ secrets.VERACODE_API_KEY_SECRET }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Veracode CLI (workspace binary)
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Installing Veracode CLI..."
-          curl -fsS https://tools.veracode.com/veracode-cli/install | sh
-
-          # O instalador normalmente copia o binário para o workspace como ./veracode
-          if [ -f "./veracode" ]; then
-            chmod +x ./veracode
-            echo "VERACODE_CMD=./veracode" >> "$GITHUB_ENV"
-            echo "Installed: ./veracode"
-            ./veracode version || true
-          else
-            echo "Não encontrei ./veracode após a instalação."
-            echo "Listando diretório atual:"
-            ls -lah
-            exit 1
-          fi
-
-      # DISCOVER 3x (json / yaml / text) em dry-run
-      - name: AutoPackager - package discover (json/yaml/text)
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          $VERACODE_CMD package discover . --dry-run --format json > veracode-discover.json
-          $VERACODE_CMD package discover . --dry-run --format yaml > veracode-discover.yaml
-          $VERACODE_CMD package discover . --dry-run --format text > veracode-discover.txt
-
-          echo "=== veracode-discover.json (primeiras 120 linhas) ==="
-          sed -n '1,120p' veracode-discover.json || true
-
-          echo "=== veracode-discover.yaml (primeiras 120 linhas) ==="
-          sed -n '1,120p' veracode-discover.yaml || true
-
-          echo "=== veracode-discover.txt (primeiras 200 linhas) ==="
-          sed -n '1,200p' veracode-discover.txt || true
-
-      - name: Upload discover outputs
-        uses: actions/upload-artifact@v4
+      - name: Veracode Pipeline Scan (auto packager sem Bantuu)
+        id: veracode_pipeline_only
+        uses: Afrikatec-JuanCunhaa/bantuu-baseline@v1
         with:
-          name: veracode-discover-outputs
-          path: |
-            veracode-discover.json
-            veracode-discover.yaml
-            veracode-discover.txt
-          if-no-files-found: error
-
-      # PACKAGE (gera o pacote .zip/.tar/.tgz dentro de veracode-package-out)
-      - name: AutoPackager - package
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p veracode-package-out
-
-          # Empacota o projeto inteiro como diretório.
-          # --trust é necessário na primeira execução para confiar no packaging.
-          $VERACODE_CMD package --source . --type directory --output veracode-package-out --trust
-
-          echo "=== Conteúdo gerado em veracode-package-out ==="
-          ls -lah veracode-package-out
-
-          # Opcional: tenta identificar o arquivo gerado
-          PKG_FILE="$(ls -1 veracode-package-out | grep -Ei '\.(zip|tar|tgz)$' | head -n 1 || true)"
-          if [ -z "$PKG_FILE" ]; then
-            echo "Nenhum arquivo .zip/.tar/.tgz encontrado em veracode-package-out"
-            exit 1
-          fi
-
-          echo "PACKAGE_FILE=veracode-package-out/$PKG_FILE" >> "$GITHUB_ENV"
-          echo "Pacote gerado: veracode-package-out/$PKG_FILE"
-
-      - name: Upload package output
-        uses: actions/upload-artifact@v4
-        with:
-          name: veracode-autopackager-package
-          path: veracode-package-out
-          if-no-files-found: error
+          veracode_api_id: ${{ secrets.VERACODE_API_ID }}
+          veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
+          enable_auto_packager: 'true'
+          enable_baseline: 'false'
+          policy_fail: 'false'
