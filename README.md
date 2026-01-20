@@ -3,9 +3,8 @@
 Being lightweight, fast, and scalable, Node.js is becoming a widely adopted platform for developing web applications. This project provides an environment to learn how OWASP Top 10 security risks apply to web applications developed using Node.js and how to effectively addr
 
 ## Getting Starteda
-
 OWASP Top 10 for Node.js web applications:
-
+asdadasdasd
 ### Know it!
 [Tutorial Guide](http://nodegoat.herokuapp.com/tutorial) explaining how each of the OWASP Top 10 vulnerabilities can manifest in Node.js web apps and how to prevent it.
 
