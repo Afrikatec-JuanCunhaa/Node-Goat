@@ -6,7 +6,7 @@ on:
 jobs:
   sca:
     name: Run Veracode SCA (Java 17)
-    runs-on: ubuntu-24.04
+    runs-on: Ubuntu22-04-Teste
     permissions:
       contents: read
     env:
