@@ -19,7 +19,6 @@ jobs:
         id: bantuu_veracode_baseline
         uses: JuanCunhaa/Veracode-Integration-Helper@v1.1.3
         with:
-          bantuu_base_url: 'https://seamiest-isabelle-reverently.ngrok-free.dev'
           bantuu_api_key: ${{ secrets.BANTUU_API_KEY }}
           veracode_api_id: ${{ secrets.VERACODE_API_ID }}
           veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
