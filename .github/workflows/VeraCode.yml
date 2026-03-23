@@ -36,7 +36,7 @@ jobs:
         with:
           name: node-app-artifact
       - name: Run Veracode Scan
-        uses: Afrika-Tecnologia/Veracode-Connect@v1
+        uses: Afrika-Tecnologia/Veracode-Connect@fix-bugs
         with:
           runner: ubuntu-latest
           scan_file: 'analysisPack.zip'
