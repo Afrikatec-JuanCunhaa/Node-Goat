@@ -31,14 +31,18 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: node-app-artifact
       - name: Run Veracode Scan
         uses: Afrika-Tecnologia/Veracode-Connect@v1
         with:
           runner: ubuntu-latest
           build_artifact_name: 'node-app-artifact'
           build_artifact_path: 'build'
-        env:
-          SCAN_API_TOKEN: ${{ secrets.VERACODE_SCA_TOKEN }}
-          SCAN_API_ID: ${{ secrets.VERACODE_API_ID }}
-          SCAN_API_KEY: ${{ secrets.VERACODE_API_KEY }}
-          BANTUU_API_KEY: ${{ secrets.BANTUU_API_KEY }}
+          scan_file: 'analysisPack.zip'
+          veracode_api_id: ${{ secrets.VERACODE_API_ID }}
+          veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
+          scan_api_token: ${{ secrets.VERACODE_SCA_TOKEN }}
+          bantuu_api_key: ${{ secrets.BANTUU_API_KEY }}
