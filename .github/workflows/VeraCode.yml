@@ -35,7 +35,7 @@ jobs:
 
   security:
     needs: build
-    uses: # Referencie para o ci_security_scans do Cogna Core
+    uses: Afrika-Tecnologia/Veracode-Connect@v1
     with:
       runner: ubuntu-latest
       build_artifact_name: 'node-app-artifact'
