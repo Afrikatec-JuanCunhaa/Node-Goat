@@ -1,1 +1,49 @@
+name: security-scans
 
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+env:
+  APP_NAME: "GitHub - ${{ github.repository }}"
+
+jobs:
+  security-scans:
+    name: Veracode Scans
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Veracode CLI - Install
+        run: curl -fsS https://tools.veracode.com/veracode-cli/install | sh
+
+      - name: Veracode CLI - Autopackager
+        run: ./veracode package --source . --output veracode_artifacts --trust
+
+      - name: Veracode SCA - Scan
+        env:
+          SRCCLR_API_TOKEN: ${{ secrets.SRCCLR_API_TOKEN }}
+        run: curl -sSL https://sca-downloads.veracode.com/ci.sh | sh -s -- scan --allow-dirty --recursive
+
+      - name: Veracode Pipeline Scan - Scan
+        uses: veracode/Veracode-pipeline-scan-action@v1.0.21
+        with:
+          vid: ${{ secrets.VID }}
+          vkey: ${{ secrets.VKEY }}
+          file: veracode_artifacts/*.zip
+          fail_build: true
+
+      - name: Veracode Upload & SAST - Scan
+        uses: veracode/veracode-uploadandscan-action@0.2.10
+        with:
+          appname: ${{ env.APP_NAME }}
+          createprofile: false
+          filepath: veracode_artifacts/*.zip
+          vid: ${{ secrets.VID }}
+          vkey: ${{ secrets.VKEY }}
+          createsandbox: false
+          deleteincompletescan: 1
