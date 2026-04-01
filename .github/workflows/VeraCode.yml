@@ -38,9 +38,13 @@ jobs:
       - name: Run Veracode Scan
         uses: Afrika-Tecnologia/Veracode-Connect@fix-bugs
         with:
-          runner: ubuntu-latest
           scan_file: 'analysisPack.zip'
           veracode_api_id: ${{ secrets.VERACODE_API_ID }}
           veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
-          scan_api_token: ${{ secrets.VERACODE_SCA_TOKEN }}
-          bantuu_api_key: ${{ secrets.BANTUU_API_KEY }}
+          enable_auto_packager: 'false'
+          enable_baseline: 'false'
+          enable_upload_scan: 'true'
+          veracode_sandbox: 'false'
+          policy_fail: 'true'
+          enable_sca: 'true'
+          veracode_sca_token: ${{ secrets.VERACODE_SCA_TOKEN }}
