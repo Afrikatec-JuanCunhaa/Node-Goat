@@ -1,4 +1,4 @@
-name: Security Scan (Auto packager + Bantuu baseline)
+name: Security Scan
 on:
   workflow_dispatch:
   push:
