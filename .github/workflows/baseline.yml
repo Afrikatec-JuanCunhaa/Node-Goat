@@ -32,8 +32,8 @@ jobs:
       - name: Veracode Pipeline Scan - Scan
         uses: veracode/Veracode-pipeline-scan-action@v1.0.21
         with:
-          vid: ${{ secrets.VID }}
-          vkey: ${{ secrets.VKEY }}
+          vid: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
           file: veracode_artifacts/*.zip
           fail_build: true
 
@@ -43,7 +43,7 @@ jobs:
           appname: ${{ env.APP_NAME }}
           createprofile: false
           filepath: veracode_artifacts/*.zip
-          vid: ${{ secrets.VID }}
-          vkey: ${{ secrets.VKEY }}
+          vid: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_ID }}
           createsandbox: false
           deleteincompletescan: 1
