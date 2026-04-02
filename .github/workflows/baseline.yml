@@ -38,7 +38,7 @@ jobs:
           fail_build: false
 
       - name: Veracode Upload & SAST - Scan
-        uses: veracode/veracode-uploadandscan-action@0.2.10
+        uses: veracode/veracode-uploadandscan-action@0.2.11
         with:
           appname: ${{ env.APP_NAME }}
           createprofile: true
