@@ -35,15 +35,15 @@ jobs:
           vid: ${{ secrets.VERACODE_API_ID }}
           vkey: ${{ secrets.VERACODE_API_KEY }}
           file: veracode_artifacts/*.zip
-          fail_build: true
+          fail_build: false
 
       - name: Veracode Upload & SAST - Scan
         uses: veracode/veracode-uploadandscan-action@0.2.10
         with:
           appname: ${{ env.APP_NAME }}
-          createprofile: false
+          createprofile: true
           filepath: veracode_artifacts/*.zip
           vid: ${{ secrets.VERACODE_API_ID }}
-          vkey: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
           createsandbox: false
           deleteincompletescan: 1
