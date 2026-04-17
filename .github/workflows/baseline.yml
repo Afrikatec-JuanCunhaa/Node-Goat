@@ -1,15 +1,12 @@
 name: security-scans
-
 on:
   push:
     branches: ["**"]
   pull_request:
     branches: ["**"]
   workflow_dispatch:
-
 env:
   APP_NAME: "GitHub - ${{ github.repository }}"
-
 jobs:
   security-scans:
     name: Veracode Scans
@@ -27,7 +24,16 @@ jobs:
       - name: Veracode SCA - Scan
         env:
           SRCCLR_API_TOKEN: ${{ secrets.VERACODE_SCA_TOKEN }}
-        run: curl -sSL https://sca-downloads.veracode.com/ci.sh | sh -s -- scan --allow-dirty --recursive
+          VERACODE_API_ID: ${{ secrets.VERACODE_API_ID }}
+          VERACODE_API_KEY: ${{ secrets.VERACODE_API_KEY }}
+        run: curl -sSL https://sca-downloads.veracode.com/ci.sh | sh -s -- scan --allow-dirty --recursive --appname "${{ env.APP_NAME }}" --json sca_results.json --show-cli
+
+      - name: Veracode SCA - Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sca-results
+          path: sca_results.json
 
       - name: Veracode Pipeline Scan - Scan
         uses: veracode/Veracode-pipeline-scan-action@v1.0.21
