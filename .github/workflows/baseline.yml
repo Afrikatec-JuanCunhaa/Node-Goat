@@ -26,9 +26,10 @@ jobs:
           SRCCLR_API_TOKEN: ${{ secrets.VERACODE_SCA_TOKEN }}
           VERACODE_API_KEY_ID: ${{ secrets.VERACODE_API_ID }}
           VERACODE_API_KEY_SECRET: ${{ secrets.VERACODE_API_KEY }}
-        run: 
-          APP_NAME_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${{ env.APP_NAME }}', safe=''))")
-          curl -sSL https://sca-downloads.veracode.com/ci.sh | sh -s -- scan --allow-dirty --recursive --appname "$APP_NAME_ENCODED" --json sca_results.json --show-cli
+        run: |
+          SCA_APP_NAME=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${{ github.repository }}', safe=''))")
+          echo "App name encoded: $SCA_APP_NAME"
+          curl -sSL https://sca-downloads.veracode.com/ci.sh | sh -s -- scan --allow-dirty --recursive --appname "$SCA_APP_NAME" --json sca_results.json --show-cli
 
       - name: Veracode SCA - Upload Results
         if: always()
