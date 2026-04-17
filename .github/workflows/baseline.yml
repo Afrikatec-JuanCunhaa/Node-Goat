@@ -24,8 +24,8 @@ jobs:
       - name: Veracode SCA - Scan
         env:
           SRCCLR_API_TOKEN: ${{ secrets.VERACODE_SCA_TOKEN }}
-          SRCCLR_API_ID: ${{ secrets.VERACODE_API_ID }}
-          SRCCLR_API_KEY: ${{ secrets.VERACODE_API_KEY }}
+          VERACODE_API_KEY_ID: ${{ secrets.VERACODE_API_ID }}
+          VERACODE_API_KEY_SECRET: ${{ secrets.VERACODE_API_KEY }}
         run: curl -sSL https://sca-downloads.veracode.com/ci.sh | sh -s -- scan --allow-dirty --recursive --appname "${{ env.APP_NAME }}" --json sca_results.json --show-cli
 
       - name: Veracode SCA - Upload Results
