@@ -29,7 +29,7 @@ jobs:
         run: |
           SCA_APP_NAME=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${{ github.repository }}', safe=''))")
           echo "App name encoded: $SCA_APP_NAME"
-          curl -sSL https://sca-downloads.veracode.com/ci.sh | sh -s -- scan --allow-dirty --recursive --appname "Afrikatec-JuanCunhaa%2FNode-Goat" --json sca_results.json --show-cli
+          curl -sSL https://sca-downloads.veracode.com/ci.sh | sh -s -- scan --allow-dirty --recursive --appname "Juan-Node-Goat" --json sca_results.json --show-cli
 
       - name: Veracode SCA - Upload Results
         if: always()
@@ -49,7 +49,7 @@ jobs:
       - name: Veracode Upload & SAST - Scan
         uses: veracode/veracode-uploadandscan-action@0.2.11
         with:
-          appname: ${{ env.APP_NAME }}
+          appname: "Juan-Node-Goat"
           createprofile: true
           filepath: veracode_artifacts/*.zip
           vid: ${{ secrets.VERACODE_API_ID }}
