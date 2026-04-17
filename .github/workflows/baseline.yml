@@ -6,7 +6,7 @@ on:
     branches: ["**"]
   workflow_dispatch:
 env:
-  APP_NAME: "GitHub - ${{ github.repository }}"
+  APP_NAME: "${{ github.repository }}"
 jobs:
   security-scans:
     name: Veracode Scans
@@ -26,7 +26,9 @@ jobs:
           SRCCLR_API_TOKEN: ${{ secrets.VERACODE_SCA_TOKEN }}
           VERACODE_API_KEY_ID: ${{ secrets.VERACODE_API_ID }}
           VERACODE_API_KEY_SECRET: ${{ secrets.VERACODE_API_KEY }}
-        run: curl -sSL https://sca-downloads.veracode.com/ci.sh | sh -s -- scan --allow-dirty --recursive --appname "${{ env.APP_NAME }}" --json sca_results.json --show-cli
+        run: 
+          APP_NAME_ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${{ env.APP_NAME }}', safe=''))")
+          curl -sSL https://sca-downloads.veracode.com/ci.sh | sh -s -- scan --allow-dirty --recursive --appname "$APP_NAME_ENCODED" --json sca_results.json --show-cli
 
       - name: Veracode SCA - Upload Results
         if: always()
