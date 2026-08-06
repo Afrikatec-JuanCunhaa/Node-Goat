@@ -1,391 +1,131 @@
-name: Veracode Scans
+# Veracode Pipeline Scan via Veracode Connect (scan_file + Repo Baseline)
+# Secrets necessários:
+#   VERACODE_API_ID
+#   VERACODE_API_KEY
+#   BASELINE_GITHUB_APP_ID
+#   BASELINE_GITHUB_APP_PRIVATE_KEY
+#   BASELINE_GITHUB_APP_INSTALLATION_ID
+# Variáveis (Repository/Org Variables):
+#   BASELINE_ORG  → org dona do repo Afrika-Veracode-Connect-Baseline
+#
+# Pré-requisito: repo privado Afrika-Veracode-Connect-Baseline na org (BASELINE_ORG),
+# com GitHub App instalado (Contents: Read and write).
+
+name: Veracode Pipeline Scan
 
 on:
-  push:
-    branches:
-      - "**"
-
-  pull_request:
-    branches:
-      - "**"
-    types:
-      - opened
-      - synchronize
-      - reopened
-
   workflow_dispatch:
-    inputs:
-      run_autofix:
-        description: "Executar o Veracode Fix e criar um Pull Request?"
-        required: true
-        type: boolean
-        default: true
 
 permissions:
-  actions: read
-  checks: write
-  contents: write
-  pull-requests: write
-  statuses: write
-
-concurrency:
-  group: veracode-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  VERACODE_RESULTS_ARTIFACT: veracode-pipeline-results-${{ github.run_id }}
+  contents: read
 
 jobs:
-  veracode:
-    name: Veracode Scans
+  build:
+    name: Build & Package
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-
-    # O push da branch criada pelo Fix é ignorado; a validação ocorre
-    # pelo evento pull_request, evitando scans duplicados.
-    if: >-
-      !(github.event_name == 'push' &&
-        startsWith(github.ref_name, 'Veracode-fix-bot-'))
-
-    outputs:
-      has_pipeline_results: ${{ steps.pipeline_results.outputs.has_results }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
+      # NodeGoat: Dockerfile usa node:12; README exige Node >= 8
+      # JS/TS Veracode (S4R): upload de source — sem compilação; excluir node_modules
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "12"
+          cache: npm
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Install Veracode CLI
-        shell: bash
+      - name: Package for Veracode (app.zip)
         run: |
           set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y zip unzip
 
-          curl -fsS https://tools.veracode.com/veracode-cli/install | sh
-          chmod +x ./veracode
-          ./veracode --version
+          rm -f app.zip
 
-      # Mantido no mesmo formato do pipeline original.
-      # O Veracode Package prepara a aplicação e gera o ZIP analisável.
-      - name: Veracode Auto Packager (CLI)
-        id: autopackager
-        shell: bash
-        env:
-          VERACODE_API_KEY_ID: ${{ secrets.VERACODE_API_ID }}
-          VERACODE_API_KEY_SECRET: ${{ secrets.VERACODE_API_KEY }}
-        run: |
-          set -euo pipefail
+          # Zip plano: arquivos na raiz do archive (não pasta wrapper).
+          # Sem zip-dentro-de-zip; sem node_modules (Veracode não analisa).
+          zip -rq app.zip . \
+            -x ".git/*" \
+            -x ".github/*" \
+            -x ".circleci/*" \
+            -x ".vscode/*" \
+            -x ".travis.yml" \
+            -x "node_modules/*" \
+            -x "*/node_modules/*" \
+            -x "test/*" \
+            -x "*/test/*" \
+            -x "artifacts/*" \
+            -x "terraform/*" \
+            -x "Jscrawbler/*" \
+            -x "*.zip" \
+            -x "*.tar" \
+            -x "*.tar.gz" \
+            -x "*.tgz" \
+            -x "*.rar" \
+            -x "app.zip"
 
-          rm -rf veracode-artifacts
-          mkdir -p veracode-artifacts
+          echo "::group::Conteúdo do app.zip (amostra)"
+          unzip -l app.zip | head -n 60
+          echo "::endgroup::"
 
-          ./veracode package \
-            --source . \
-            --type directory \
-            --output veracode-artifacts \
-            --trust
-
-          package_file="$(
-            find veracode-artifacts \
-              -maxdepth 1 \
-              -type f \
-              -name '*.zip' \
-              -printf '%T@ %p\n' |
-            sort -nr |
-            head -n 1 |
-            cut -d' ' -f2-
-          )"
-
-          if [[ -z "${package_file}" || ! -s "${package_file}" ]]; then
-            echo "::error::O Veracode Auto Packager não gerou um ZIP válido."
+          echo "::group::Validar ausência de zip aninhado"
+          if unzip -Z1 app.zip | grep -E '\.(zip|tar|tgz|rar)$|tar\.gz$'; then
+            echo "::error::Encontrado archive aninhado dentro de app.zip (Veracode não aceita)."
             exit 1
           fi
+          echo "OK: nenhum archive aninhado."
+          echo "::endgroup::"
 
-          echo "package_file=${package_file}" >> "${GITHUB_OUTPUT}"
-          echo "Pacote gerado: ${package_file}"
-          ls -lh "${package_file}"
-
-      - name: Clean previous Pipeline Scan outputs
-        if: ${{ steps.autopackager.outcome == 'success' }}
-        shell: bash
-        run: rm -f results.json filtered_results.json results.txt
-
-      # O ESD é obrigatório para que o Veracode Fix relacione
-      # os findings aos arquivos e linhas do código-fonte.
-      - name: Veracode Pipeline Scan
-        id: pipeline_scan
-        if: ${{ steps.autopackager.outcome == 'success' }}
-        continue-on-error: true
-        uses: veracode/Veracode-pipeline-scan-action@v1.0.23
-        with:
-          vid: ${{ secrets.VERACODE_API_ID }}
-          vkey: ${{ secrets.VERACODE_API_KEY }}
-          token: ${{ github.token }}
-          file: ${{ steps.autopackager.outputs.package_file }}
-
-          esd: true
-          fail_build: false
-
-          json_output: true
-          json_output_file: results.json
-          filtered_json_output_file: filtered_results.json
-
-          summary_display: true
-          summary_output: true
-          summary_output_file: results.txt
-          issue_details: true
-
-          project_name: ${{ github.event.repository.name }}
-          project_url: ${{ github.server_url }}/${{ github.repository }}
-          project_ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
-          development_stage: Development
-
-      - name: Validate Pipeline Scan results
-        id: pipeline_results
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -s results.json ]]; then
-            echo "has_results=true" >> "${GITHUB_OUTPUT}"
-            echo "results.json gerado com sucesso."
-            ls -lh results.json
-          else
-            echo "has_results=false" >> "${GITHUB_OUTPUT}"
-            echo "::warning::O Pipeline Scan não gerou results.json. O Auto Fix será ignorado."
-          fi
-
-      - name: Upload Pipeline Scan results
-        if: ${{ always() && steps.pipeline_results.outputs.has_results == 'true' }}
+      - name: Upload scan file
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.VERACODE_RESULTS_ARTIFACT }}
-          path: |
-            results.json
-            filtered_results.json
-            results.txt
-          if-no-files-found: warn
-          retention-days: 7
+          name: veracode-scan-file
+          path: app.zip
+          if-no-files-found: error
+          retention-days: 5
 
-  veracode-fix:
-    name: Veracode Auto Fix
-    needs:
-      - veracode
-
+  security:
+    name: Veracode Connect (Pipeline Scan + Repo Baseline)
+    needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    # O Fix roda automaticamente em PRs internos e também pode ser
-    # testado manualmente pelo workflow_dispatch.
-    # Branches criadas pelo próprio Fix são ignoradas para evitar loop.
-    if: >-
-      always() &&
-      needs.veracode.outputs.has_pipeline_results == 'true' &&
-      (
-        (
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository &&
-          !startsWith(github.head_ref, 'Veracode-fix-bot-')
-        ) ||
-        (
-          github.event_name == 'workflow_dispatch' &&
-          inputs.run_autofix == true &&
-          !startsWith(github.ref_name, 'Veracode-fix-bot-')
-        )
-      )
-
     steps:
-      - name: Checkout source branch
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: true
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
 
-      - name: Download Pipeline Scan results
+      - name: Download scan file
         uses: actions/download-artifact@v4
         with:
-          name: ${{ env.VERACODE_RESULTS_ARTIFACT }}
-          path: ${{ runner.temp }}/veracode-results
+          name: veracode-scan-file
+          path: veracode-artifact
 
-      - name: Validate Auto Fix input
-        id: fix_input
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          results_file="${RUNNER_TEMP}/veracode-results/results.json"
-
-          if [[ ! -s "${results_file}" ]]; then
-            echo "::error::results.json não foi encontrado ou está vazio."
-            exit 1
-          fi
-
-          finding_count="$(
-            jq '(.findings // []) | length' "${results_file}" 2>/dev/null ||
-            echo "0"
-          )"
-
-          echo "Quantidade de findings no results.json: ${finding_count}"
-
-          if [[ "${finding_count}" -gt 0 ]]; then
-            echo "has_findings=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "has_findings=false" >> "${GITHUB_OUTPUT}"
-            echo "Nenhum finding disponível para o Veracode Fix."
-          fi
-
-      # createPR fica false: a action oficial espera a chave "results", mas a API
-      # atual retorna "batchResults" e quebra com TypeError ao abrir o PR.
-      # Os patches são gerados normalmente; o PR é criado no step seguinte.
-      - name: Generate Veracode Fix patches
-        id: veracode_fix
-        if: ${{ steps.fix_input.outputs.has_findings == 'true' }}
-        uses: Veracode/veracode-fix@main
+      - name: Veracode Connect
+        uses: Afrika-Tecnologia/Veracode-Connect@v1
         with:
-          vid: ${{ secrets.VERACODE_API_ID }}
-          vkey: ${{ secrets.VERACODE_API_KEY }}
-          token: ${{ secrets.VERACODE_FIX_GITHUB_TOKEN || github.token }}
-          inputFile: ${{ runner.temp }}/veracode-results/results.json
-          fixType: batch
-          files: all
-          # Apenas CWEs com suporte a batch em JavaScript/TypeScript.
-          cwe: "80,117,601"
-          prComment: ${{ github.event_name == 'pull_request' }}
-          createPR: false
-          debug: false
-          useGitHubApp: false
-          emailForCommits: 41898282+github-actions[bot]@users.noreply.github.com
+          # Credenciais Veracode
+          veracode_api_id: ${{ secrets.VERACODE_API_ID }}
+          veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
 
-      - name: Apply patches and create Pull Request
-        if: ${{ steps.fix_input.outputs.has_findings == 'true' && steps.veracode_fix.outcome == 'success' }}
-        env:
-          GH_TOKEN: ${{ secrets.VERACODE_FIX_GITHUB_TOKEN || github.token }}
-          BASE_REF: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
-          BASE_SHA: ${{ github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
+          # Artefato do job de build (sem auto packager)
+          enable_auto_packager: "false"
+          scan_file: veracode-artifact/app.zip
 
-          results_file="batch_fix_results.json"
-          if [[ ! -s "${results_file}" ]]; then
-            echo "::error::batch_fix_results.json não foi gerado pela Veracode Fix action."
-            exit 1
-          fi
+          # Somente Pipeline Scan com Repo Baseline
+          baseline_mode: "repo"
+          baseline_org: ${{ vars.BASELINE_ORG }}
+          baseline_github_app_id: ${{ secrets.BASELINE_GITHUB_APP_ID }}
+          baseline_github_app_private_key: ${{ secrets.BASELINE_GITHUB_APP_PRIVATE_KEY }}
+          baseline_github_app_installation_id: ${{ secrets.BASELINE_GITHUB_APP_INSTALLATION_ID }}
 
-          npm install --no-save diff@5.2.0 >/dev/null
+          # Desliga demais scanners (defaults já são false; explícito por clareza)
+          enable_sca: "false"
+          enable_iac: "false"
+          enable_upload_scan: "false"
 
-          node <<'NODE'
-          const fs = require("fs");
-          const Diff = require("diff");
-
-          const raw = JSON.parse(fs.readFileSync("batch_fix_results.json", "utf8"));
-          // Compatível com schema atual (batchResults) e antigo (results).
-          const results = raw.batchResults || raw.results || {};
-          const files = Object.keys(results).filter((file) => {
-            const patches = results[file]?.patch;
-            return Array.isArray(patches) && patches.length > 0 && typeof patches[0] === "string" && patches[0].trim();
-          });
-
-          if (files.length === 0) {
-            console.log("Nenhum patch aplicável retornado pelo Veracode Fix.");
-            fs.writeFileSync("autofix-summary.json", JSON.stringify({ applied: 0, files: [] }, null, 2));
-            process.exit(0);
-          }
-
-          const applied = [];
-          const skipped = [];
-
-          for (const file of files) {
-            if (!fs.existsSync(file)) {
-              console.warn(`Arquivo não encontrado, ignorando: ${file}`);
-              skipped.push({ file, reason: "missing" });
-              continue;
-            }
-
-            const original = fs.readFileSync(file, "utf8");
-            const patchText = results[file].patch[0];
-            const parsed = Diff.parsePatch(patchText);
-            let updated = original;
-            let ok = true;
-
-            for (const part of parsed) {
-              const next = Diff.applyPatch(updated, part);
-              if (next === false) {
-                ok = false;
-                break;
-              }
-              updated = next;
-            }
-
-            if (!ok || updated === original) {
-              console.warn(`Falha ao aplicar patch: ${file}`);
-              skipped.push({ file, reason: "apply_failed" });
-              continue;
-            }
-
-            fs.writeFileSync(file, updated);
-            applied.push(file);
-            console.log(`Patch aplicado: ${file}`);
-          }
-
-          fs.writeFileSync(
-            "autofix-summary.json",
-            JSON.stringify({ applied: applied.length, files: applied, skipped }, null, 2)
-          );
-          console.log(`Patches aplicados: ${applied.length}; ignorados: ${skipped.length}`);
-          NODE
-
-          applied_count="$(jq -r '.applied // 0' autofix-summary.json)"
-          if [[ "${applied_count}" -eq 0 ]]; then
-            echo "::warning::Nenhum patch foi aplicado. PR não será criado."
-            exit 0
-          fi
-
-          branch_name="Veracode-fix-bot-${BASE_SHA}-$(date +%s%3N)"
-          echo "Branch: ${branch_name}"
-          echo "Base: ${BASE_REF}"
-
-          git config user.name "Veracode Fix Bot"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git checkout -B "${branch_name}"
-          git add -u
-          git commit -m "fix: apply Veracode Fix batch patches
-
-          Applied ${applied_count} file(s) from Veracode Fix (CWE 80/117/601)."
-
-          git push --set-upstream origin "${branch_name}"
-
-          {
-            echo "## Veracode Fix"
-            echo ""
-            echo "Pull Request gerado automaticamente a partir dos patches do Veracode Fix (batch)."
-            echo ""
-            echo "- Branch base: \`${BASE_REF}\`"
-            echo "- Commit base: \`${BASE_SHA}\`"
-            echo "- Arquivos com patch aplicado: **${applied_count}**"
-            echo ""
-            echo "> Workaround do workflow: a action oficial falha ao criar o PR porque a API retorna \`batchResults\` e o código espera \`results\`. Os patches foram gerados pela Veracode Fix e aplicados neste step."
-            echo ""
-            echo "Revise os diffs antes do merge."
-          } > pr-body.md
-
-          gh pr create \
-            --base "${BASE_REF}" \
-            --head "${branch_name}" \
-            --title "Veracode Batch Fix" \
-            --body-file pr-body.md
+          policy_fail: "false"
+          fail_build: "true"
+          create_issues: "false"
+          veracode_appname: ${{ github.repository }}
