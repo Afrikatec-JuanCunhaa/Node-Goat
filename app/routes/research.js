@@ -4,6 +4,8 @@ const {
     environmentalScripts
 } = require("../../config/config");
 
+const ALLOWED_RESEARCH_HOST = "query1.finance.yahoo.com";
+
 function ResearchHandler(db) {
     "use strict";
 
@@ -12,7 +14,11 @@ function ResearchHandler(db) {
     this.displayResearch = (req, res) => {
 
         if (req.query.symbol) {
-            const url = req.query.url + req.query.symbol;
+            // Remediation: CWE-918 — SSRF
+            // url vinha de req.query.url (controlado pelo usuario) e permitia
+            // o servidor buscar qualquer destino interno/externo.
+            const symbol = String(req.query.symbol || "").replace(/[^A-Za-z0-9.]/g, "");
+            const url = `https://${ALLOWED_RESEARCH_HOST}/v8/finance/chart/${encodeURIComponent(symbol)}`;
             return needle.get(url, (error, newResponse, body) => {
                 if (!error && newResponse.statusCode === 200) {
                     res.writeHead(200, {
