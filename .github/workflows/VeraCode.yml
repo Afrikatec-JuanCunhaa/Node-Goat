@@ -252,46 +252,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Veracode CLI
-        run: curl -fsS https://tools.veracode.com/veracode-cli/install | sh
-
       - name: Prepare IaC asset named like Upload and Scan
         run: |
           set -euo pipefail
           APP_NAME="${{ needs.meta.outputs.app_name }}"
-          # Mesmo nome do Upload and Scan: node-goat (repo lowercase, espaco -> "-")
-          SCAN_ROOT="${HOME}/${APP_NAME}"
-          rm -rf "${SCAN_ROOT}"
-          mkdir -p "${SCAN_ROOT}"
-          cp -a terraform/. "${SCAN_ROOT}/"
+          rm -rf "${APP_NAME}"
+          mkdir -p "${APP_NAME}"
+          cp -a terraform/. "${APP_NAME}/"
           echo "Upload and Scan appname: ${APP_NAME}"
-          echo "IaC source/asset: ${SCAN_ROOT}"
-
-      - name: Enable IaC results on Veracode Platform
-        run: |
-          set -euo pipefail
-          mkdir -p "${HOME}/.veracode"
-          cat > "${HOME}/.veracode/veracode.yml" <<EOF
-          analysis_on_platform: true
-          profile_name: ${{ needs.meta.outputs.app_name }}
-          EOF
+          echo "IaC source directory: ${APP_NAME}"
+          ls -la "${APP_NAME}" | head
 
       - name: Veracode IaC / Secrets scan
-        env:
-          VERACODE_API_KEY_ID: ${{ secrets.VERACODE_API_ID }}
-          VERACODE_API_KEY_SECRET: ${{ secrets.VERACODE_API_KEY }}
-        run: |
-          set -euo pipefail
-          APP_NAME="${{ needs.meta.outputs.app_name }}"
-          ./veracode scan \
-            --type directory \
-            --source "${HOME}/${APP_NAME}" \
-            --format table \
-            --verbose
+        uses: veracode/container_iac_secrets_scanning@v1.0.8
+        with:
+          vid: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
+          command: scan
+          type: directory
+          source: ${{ needs.meta.outputs.app_name }}
+          format: table
+          debug: true
+          fail_build: false
+          fail_build_on_error: true
+          generate_sbom_output: false
 
       - name: IaC summary
         if: always()
         run: |
           echo "### IaC" >> "$GITHUB_STEP_SUMMARY"
           echo "Nome (igual ao Upload and Scan): \`${{ needs.meta.outputs.app_name }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "Resultados: Veracode → Scans & Analysis → Container and IaC Analysis → procurar \`${{ needs.meta.outputs.app_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Resultados: Veracode → Scans & Analysis → **Container and IaC Analysis** (não fica na ficha SAST)." >> "$GITHUB_STEP_SUMMARY"
+          echo "Procure o asset \`${{ needs.meta.outputs.app_name }}\`." >> "$GITHUB_STEP_SUMMARY"
