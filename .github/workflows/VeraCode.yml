@@ -1,41 +1,22 @@
-# Veracode lab — SAST (Upload and Scan) + SCA + IaC
-#
-# Environment: veracode-natura
+# Veracode Connect
+# Secrets (repo):
 #   VERACODE_API_ID
 #   VERACODE_API_KEY
 #   VERACODE_SCA_TOKEN
-#
-# Seletor de scans (altere aqui OU no workflow_dispatch):
-#   true  = executa
-#   false = pula (codigo permanece)
-#
-# Rotas SAST:
-#   default (main/master) → Upload and Scan Policy
-#   dev                   → Upload and Scan Sandbox (node-goat-dev)
-#   qa                    → Upload and Scan Sandbox (node-goat-qa)
+#   BASELINE_GITHUB_APP_ID
+#   BASELINE_GITHUB_APP_PRIVATE_KEY
+#   BASELINE_GITHUB_APP_INSTALLATION_ID
+# Variavel (repo):
+#   BASELINE_ORG  → org dona de Afrika-Veracode-Connect-Baseline
 #
 # App name: apenas o nome do repositorio, lowercase, espacos → "-"
-# IaC: resultados em Scans & Analysis → Container and IaC Analysis
 
-name: Veracode Upload and Scan
+name: Veracode Connect
 
 on:
   push:
     branches: [main, master, dev, qa]
   workflow_dispatch:
-    inputs:
-      run_sast:
-        description: "Rodar Upload and Scan (SAST)"
-        type: boolean
-        default: false
-      run_sca:
-        description: "Rodar SCA"
-        type: boolean
-        default: false
-      run_iac:
-        description: "Rodar IaC (Container/IaC/Secrets)"
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -44,102 +25,15 @@ concurrency:
   group: veracode-${{ github.ref_name }}
   cancel-in-progress: false
 
-env:
-  # Fallback quando o trigger e push (workflow_dispatch usa os inputs acima)
-  RUN_SAST: "false"
-  RUN_SCA: "false"
-  RUN_IAC: "true"
-
 jobs:
-  meta:
-    name: Scan metadata
+  build:
+    name: Package scan file
     runs-on: ubuntu-latest
-    outputs:
-      app_name: ${{ steps.set.outputs.app_name }}
-      scan_type: ${{ steps.set.outputs.scan_type }}
-      sandbox_name: ${{ steps.set.outputs.sandbox_name }}
-      version: ${{ steps.set.outputs.version }}
-      branch: ${{ steps.set.outputs.branch }}
-      run_sast: ${{ steps.set.outputs.run_sast }}
-      run_sca: ${{ steps.set.outputs.run_sca }}
-      run_iac: ${{ steps.set.outputs.run_iac }}
-    steps:
-      - name: Derive app name, scan type, sandbox and scan flags
-        id: set
-        run: |
-          set -euo pipefail
-
-          REPO_NAME="${{ github.event.repository.name }}"
-          APP_NAME="$(printf '%s' "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | tr ' _' '--' | tr -s '-' | sed 's/^-//;s/-$//')"
-
-          BRANCH="${GITHUB_REF_NAME}"
-          SHORT_SHA="$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
-          VERSION="${BRANCH}-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
-
-          case "${BRANCH}" in
-            main|master)
-              SCAN_TYPE="policy"
-              SANDBOX_NAME=""
-              ;;
-            dev)
-              SCAN_TYPE="sandbox"
-              SANDBOX_NAME="${APP_NAME}-dev"
-              ;;
-            qa)
-              SCAN_TYPE="sandbox"
-              SANDBOX_NAME="${APP_NAME}-qa"
-              ;;
-            *)
-              echo "::error::Branch '${BRANCH}' nao mapeada. Use main/master (policy), dev ou qa (sandbox)."
-              exit 1
-              ;;
-          esac
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            RUN_SAST_FLAG="${{ github.event.inputs.run_sast }}"
-            RUN_SCA_FLAG="${{ github.event.inputs.run_sca }}"
-            RUN_IAC_FLAG="${{ github.event.inputs.run_iac }}"
-          else
-            RUN_SAST_FLAG="${RUN_SAST}"
-            RUN_SCA_FLAG="${RUN_SCA}"
-            RUN_IAC_FLAG="${RUN_IAC}"
-          fi
-
-          {
-            echo "app_name=${APP_NAME}"
-            echo "scan_type=${SCAN_TYPE}"
-            echo "sandbox_name=${SANDBOX_NAME}"
-            echo "version=${VERSION}"
-            echo "branch=${BRANCH}"
-            echo "run_sast=${RUN_SAST_FLAG}"
-            echo "run_sca=${RUN_SCA_FLAG}"
-            echo "run_iac=${RUN_IAC_FLAG}"
-          } >> "$GITHUB_OUTPUT"
-
-          echo "## Veracode lab" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Campo | Valor |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| App | \`${APP_NAME}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Branch | \`${BRANCH}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| SAST type | \`${SCAN_TYPE}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Sandbox | \`${SANDBOX_NAME:-n/a (policy)}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Version | \`${VERSION}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| RUN_SAST | \`${RUN_SAST_FLAG}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| RUN_SCA | \`${RUN_SCA_FLAG}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| RUN_IAC | \`${RUN_IAC_FLAG}\` |" >> "$GITHUB_STEP_SUMMARY"
-
-  sast:
-    name: Upload and Scan (${{ needs.meta.outputs.scan_type }})
-    if: needs.meta.outputs.run_sast == 'true'
-    needs: meta
-    runs-on: ubuntu-latest
-    environment: veracode-natura
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Package source for Veracode (app.zip)
+      - name: Package for Veracode (app.zip)
         run: |
           set -euo pipefail
           sudo apt-get update -y
@@ -176,111 +70,59 @@ jobs:
             exit 1
           fi
 
-      - name: Veracode Upload and Scan Policy
-        if: needs.meta.outputs.scan_type == 'policy'
-        uses: veracode/veracode-uploadandscan-action@0.2.11
+      - name: Upload scan file
+        uses: actions/upload-artifact@v4
         with:
-          appname: ${{ needs.meta.outputs.app_name }}
-          createprofile: true
-          filepath: app.zip
-          version: ${{ needs.meta.outputs.version }}
-          vid: ${{ secrets.VERACODE_API_ID }}
-          vkey: ${{ secrets.VERACODE_API_KEY }}
-          criticality: VeryHigh
-          scantimeout: 90
-          scanpollinginterval: 30
-          deleteincompletescan: 2
-          scanallnonfataltoplevelmodules: true
-          includenewmodules: true
+          name: veracode-scan-file
+          path: app.zip
+          if-no-files-found: error
+          retention-days: 5
 
-      - name: Veracode Upload and Scan Sandbox
-        if: needs.meta.outputs.scan_type == 'sandbox'
-        uses: veracode/veracode-uploadandscan-action@0.2.11
-        with:
-          appname: ${{ needs.meta.outputs.app_name }}
-          createprofile: true
-          filepath: app.zip
-          version: ${{ needs.meta.outputs.version }}
-          vid: ${{ secrets.VERACODE_API_ID }}
-          vkey: ${{ secrets.VERACODE_API_KEY }}
-          createsandbox: true
-          sandboxname: ${{ needs.meta.outputs.sandbox_name }}
-          criticality: VeryHigh
-          scantimeout: 90
-          scanpollinginterval: 30
-          deleteincompletescan: 2
-          scanallnonfataltoplevelmodules: true
-          includenewmodules: true
-
-  sca:
-    name: SCA (${{ needs.meta.outputs.branch }})
-    if: needs.meta.outputs.run_sca == 'true'
-    needs: meta
+  security:
+    name: Veracode Connect
+    needs: build
     runs-on: ubuntu-latest
-    environment: veracode-natura
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Veracode Agent SCA
-        id: veracode-sca
-        env:
-          SRCCLR_API_TOKEN: ${{ secrets.VERACODE_SCA_TOKEN }}
-        uses: veracode/veracode-sca@v2.1.17
+      - name: Download scan file
+        uses: actions/download-artifact@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          create-issues: false
-          update_advisor: true
-          allow-dirty: true
-          breakBuildOnPolicyFindings: false
-          profile_name: ${{ needs.meta.outputs.app_name }}
+          name: veracode-scan-file
+          path: veracode-artifact
 
-      - name: SCA report URL
-        if: always() && steps.veracode-sca.outputs.scan-url
-        run: |
-          echo "SCA report: ${{ steps.veracode-sca.outputs.scan-url }}"
-          echo "### SCA" >> "$GITHUB_STEP_SUMMARY"
-          echo "Report: ${{ steps.veracode-sca.outputs.scan-url }}" >> "$GITHUB_STEP_SUMMARY"
-
-  iac:
-    name: IaC (${{ needs.meta.outputs.branch }})
-    if: needs.meta.outputs.run_iac == 'true'
-    needs: meta
-    runs-on: ubuntu-latest
-    environment: veracode-natura
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Prepare IaC asset named like Upload and Scan
+      - name: App name (repo only, lowercase)
+        id: app
         run: |
           set -euo pipefail
-          APP_NAME="${{ needs.meta.outputs.app_name }}"
-          rm -rf "${APP_NAME}"
-          mkdir -p "${APP_NAME}"
-          cp -a terraform/. "${APP_NAME}/"
-          echo "Upload and Scan appname: ${APP_NAME}"
-          echo "IaC source directory: ${APP_NAME}"
-          ls -la "${APP_NAME}" | head
+          REPO_NAME="${{ github.event.repository.name }}"
+          APP_NAME="$(printf '%s' "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | tr ' _' '--' | tr -s '-' | sed 's/^-//;s/-$//')"
+          echo "app_name=${APP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "App Veracode: ${APP_NAME}"
 
-      - name: Veracode IaC / Secrets scan
-        uses: veracode/container_iac_secrets_scanning@v1.0.8
+      - name: Repo Baseline + SCA + IaC + Pipeline Scan + Upload and Scan
+        uses: Afrika-Tecnologia/Veracode-Connect@v1
         with:
-          vid: ${{ secrets.VERACODE_API_ID }}
-          vkey: ${{ secrets.VERACODE_API_KEY }}
-          command: scan
-          type: directory
-          source: ${{ needs.meta.outputs.app_name }}
-          format: table
-          debug: true
-          fail_build: false
-          fail_build_on_error: true
-          generate_sbom_output: false
+          veracode_api_id: ${{ secrets.VERACODE_API_ID }}
+          veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
+          veracode_appname: ${{ steps.app.outputs.app_name }}
 
-      - name: IaC summary
-        if: always()
-        run: |
-          echo "### IaC" >> "$GITHUB_STEP_SUMMARY"
-          echo "Nome (igual ao Upload and Scan): \`${{ needs.meta.outputs.app_name }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "Resultados: Veracode → Scans & Analysis → **Container and IaC Analysis** (não fica na ficha SAST)." >> "$GITHUB_STEP_SUMMARY"
-          echo "Procure o asset \`${{ needs.meta.outputs.app_name }}\`." >> "$GITHUB_STEP_SUMMARY"
+          enable_auto_packager: "false"
+          scan_file: veracode-artifact/app.zip
+
+          baseline_mode: "repo"
+          baseline_org: ${{ vars.BASELINE_ORG }}
+          baseline_github_app_id: ${{ secrets.BASELINE_GITHUB_APP_ID }}
+          baseline_github_app_private_key: ${{ secrets.BASELINE_GITHUB_APP_PRIVATE_KEY }}
+          baseline_github_app_installation_id: ${{ secrets.BASELINE_GITHUB_APP_INSTALLATION_ID }}
+
+          enable_pipelinescan: "true"
+          enable_sca: "true"
+          veracode_sca_token: ${{ secrets.VERACODE_SCA_TOKEN }}
+          enable_iac: "true"
+          enable_upload_scan: "true"
+
+          policy_fail: "false"
+          fail_build: "false"
+          create_issues: "false"
