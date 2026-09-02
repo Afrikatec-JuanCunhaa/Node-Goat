@@ -109,7 +109,7 @@ jobs:
           vid: ${{ secrets.VERACODE_API_ID }}
           vkey: ${{ secrets.VERACODE_API_KEY }}
           scantimeout: 90
-          deleteincompletescan: 1
+          deleteincompletescan: true
           failbuild: false
 
   sandbox-scan:
@@ -145,5 +145,5 @@ jobs:
           createsandbox: true
           sandboxname: stability-${{ github.ref_name }}
           scantimeout: 90
-          deleteincompletescan: 1
+          deleteincompletescan: true
           failbuild: false
