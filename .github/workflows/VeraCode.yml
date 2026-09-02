@@ -1,21 +1,21 @@
-# Veracode Connect
-# Secrets (repo):
+# Veracode Upload and Scan (stability test)
+# Secrets (environment: veracode-afrika):
 #   VERACODE_API_ID
 #   VERACODE_API_KEY
-#   VERACODE_SCA_TOKEN
-#   BASELINE_GITHUB_APP_ID
-#   BASELINE_GITHUB_APP_PRIVATE_KEY
-#   BASELINE_GITHUB_APP_INSTALLATION_ID
-# Variavel (repo):
-#   BASELINE_ORG  → org dona de Afrika-Veracode-Connect-Baseline
 #
 # App name: apenas o nome do repositorio, lowercase, espacos → "-"
+# Jobs policy + sandbox rodam em paralelo apos o package.
 
 name: Veracode Connect
 
 on:
   push:
-    branches: [main, master, dev, qa]
+    branches:
+      - main
+      - master
+      - dev
+      - qa
+      - feat/veracode-upload-and-scan-stability
   workflow_dispatch:
 
 permissions:
@@ -78,14 +78,12 @@ jobs:
           if-no-files-found: error
           retention-days: 5
 
-  security:
-    name: Veracode Connect
+  policy-scan:
+    name: Policy Scan (no sandbox)
     needs: build
     runs-on: ubuntu-latest
+    environment: veracode-afrika
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Download scan file
         uses: actions/download-artifact@v4
         with:
@@ -101,28 +99,51 @@ jobs:
           echo "app_name=${APP_NAME}" >> "$GITHUB_OUTPUT"
           echo "App Veracode: ${APP_NAME}"
 
-      - name: Repo Baseline + SCA + IaC + Pipeline Scan + Upload and Scan
-        uses: Afrika-Tecnologia/Veracode-Connect@v1
+      - name: Veracode Upload and Scan (Policy)
+        uses: veracode/uploadandscan-action@v0.2.1
         with:
-          veracode_api_id: ${{ secrets.VERACODE_API_ID }}
-          veracode_api_key: ${{ secrets.VERACODE_API_KEY }}
-          veracode_appname: ${{ steps.app.outputs.app_name }}
+          appname: ${{ steps.app.outputs.app_name }}
+          createprofile: false
+          filepath: veracode-artifact/app.zip
+          version: policy-${{ github.run_id }}-${{ github.run_attempt }}
+          vid: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
+          scantimeout: 90
+          deleteincompletescan: 1
+          failbuild: false
 
-          enable_auto_packager: "false"
-          scan_file: veracode-artifact/app.zip
+  sandbox-scan:
+    name: Sandbox Scan
+    needs: build
+    runs-on: ubuntu-latest
+    environment: veracode-afrika
+    steps:
+      - name: Download scan file
+        uses: actions/download-artifact@v4
+        with:
+          name: veracode-scan-file
+          path: veracode-artifact
 
-          baseline_mode: "repo"
-          baseline_org: ${{ vars.BASELINE_ORG }}
-          baseline_github_app_id: ${{ secrets.BASELINE_GITHUB_APP_ID }}
-          baseline_github_app_private_key: ${{ secrets.BASELINE_GITHUB_APP_PRIVATE_KEY }}
-          baseline_github_app_installation_id: ${{ secrets.BASELINE_GITHUB_APP_INSTALLATION_ID }}
+      - name: App name (repo only, lowercase)
+        id: app
+        run: |
+          set -euo pipefail
+          REPO_NAME="${{ github.event.repository.name }}"
+          APP_NAME="$(printf '%s' "$REPO_NAME" | tr '[:upper:]' '[:lower:]' | tr ' _' '--' | tr -s '-' | sed 's/^-//;s/-$//')"
+          echo "app_name=${APP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "App Veracode: ${APP_NAME}"
 
-          enable_pipelinescan: "true"
-          enable_sca: "true"
-          veracode_sca_token: ${{ secrets.VERACODE_SCA_TOKEN }}
-          enable_iac: "true"
-          enable_upload_scan: "true"
-
-          policy_fail: "false"
-          fail_build: "false"
-          create_issues: "false"
+      - name: Veracode Upload and Scan (Sandbox)
+        uses: veracode/uploadandscan-action@v0.2.1
+        with:
+          appname: ${{ steps.app.outputs.app_name }}
+          createprofile: false
+          filepath: veracode-artifact/app.zip
+          version: sandbox-${{ github.run_id }}-${{ github.run_attempt }}
+          vid: ${{ secrets.VERACODE_API_ID }}
+          vkey: ${{ secrets.VERACODE_API_KEY }}
+          createsandbox: true
+          sandboxname: stability-${{ github.ref_name }}
+          scantimeout: 90
+          deleteincompletescan: 1
+          failbuild: false
