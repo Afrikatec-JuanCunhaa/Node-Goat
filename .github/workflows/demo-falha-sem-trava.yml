@@ -1,0 +1,67 @@
+# Demo visual: jobs vermelhos sem travar a esteira
+# Mesmo padrao planejado para o template Veracode (continue-on-error no JOB)
+
+name: Demo falha sem trava
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  autopack:
+    name: AutoPack
+    runs-on: ubuntu-latest
+    steps:
+      - name: AutoPack
+        run: |
+          echo "Este e o step AutoPack (sucesso)"
+          exit 0
+
+  sca:
+    name: Sca
+    needs: autopack
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sca
+        run: |
+          echo "Este e o step Sca que falharia (politica/vuln)"
+          echo "continue-on-error esta no JOB — job vermelho, esteira segue"
+          exit 1
+
+  pipeline_scan:
+    name: Pipeline Scan
+    needs: sca
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pipeline Scan
+        run: |
+          echo "Este e o step Pipeline Scan (sucesso)"
+          exit 0
+
+  upload_and_scan:
+    name: Upload And Scan
+    needs: pipeline_scan
+    if: ${{ !cancelled() }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upload And Scan
+        run: |
+          echo "Este e o step Upload And Scan que falharia (politica/vuln)"
+          echo "continue-on-error esta no JOB — job vermelho, esteira segue"
+          exit 1
+
+  bu:
+    name: BU
+    needs: upload_and_scan
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: BU
+        run: |
+          echo "Este e o step BU (sucesso)"
+          exit 0
