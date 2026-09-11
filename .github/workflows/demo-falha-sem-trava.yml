@@ -5,6 +5,8 @@ name: Demo falha sem trava
 
 on:
   workflow_dispatch:
+  push:
+    branches: [demo/falha-sem-trava]
 
 permissions:
   contents: read
